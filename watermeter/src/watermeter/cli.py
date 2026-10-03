@@ -40,17 +40,39 @@ def _start_web(reader, cfg):
     return server
 
 
-def _setup_discovery(client, mqtt_cfg):
-    """Disponibilidad (LWT) y MQTT Discovery; se republica en cada reconexión."""
+def _setup_mqtt(client, mqtt_cfg):
+    """
+    Registra en el log el estado de la conexión y, si hay Discovery,
+    publica disponibilidad (LWT) y entidades en cada (re)conexión.
+    """
+    discovery = bool(mqtt_cfg.get("discovery"))
     avail = availability_topic(mqtt_cfg)
-    client.will_set(avail, "offline", retain=True)
+    if discovery:
+        client.will_set(avail, "offline", retain=True)
 
-    def on_connect(cl, userdata, *args):  # firma distinta en paho 1.x y 2.x
-        for topic, payload in discovery_messages(mqtt_cfg):
-            cl.publish(topic, payload, retain=True)
-        cl.publish(avail, "online", retain=True)
+    def on_connect(cl, userdata, flags, rc, *props):  # paho 1.x: rc int; 2.x: ReasonCode
+        if getattr(rc, "is_failure", rc != 0):
+            print(f"MQTT: conexión rechazada por el broker: {rc} "
+                  "(revisa usuario/contraseña)", flush=True)
+            return
+        print(f"MQTT: conectado a {mqtt_cfg['host']}:{mqtt_cfg.get('port', 1883)}, "
+              f"topic {mqtt_cfg.get('topic', 'watermeter/state')}", flush=True)
+        if discovery:
+            for topic, payload in discovery_messages(mqtt_cfg):
+                cl.publish(topic, payload, retain=True)
+            cl.publish(avail, "online", retain=True)
+            print("MQTT: Discovery publicado", flush=True)
+
+    def on_disconnect(cl, userdata, *args):
+        print("MQTT: desconectado (se reintenta automáticamente)", flush=True)
+
+    def on_connect_fail(cl, userdata):
+        print(f"MQTT: no se pudo conectar a {mqtt_cfg['host']}:"
+              f"{mqtt_cfg.get('port', 1883)} (se reintenta)", flush=True)
 
     client.on_connect = on_connect
+    client.on_disconnect = on_disconnect
+    client.on_connect_fail = on_connect_fail
 
 
 def run_continuous(reader, cfg, debug_dir, use_mqtt=True):
@@ -62,11 +84,19 @@ def run_continuous(reader, cfg, debug_dir, use_mqtt=True):
     web = _start_web(reader, cfg)
 
     try:
-        if use_mqtt and mqtt_cfg.get("host"):
+        if not use_mqtt:
+            print("MQTT desactivado (--no-mqtt)", flush=True)
+        elif not mqtt_cfg.get("host"):
+            print("MQTT: SIN BROKER. No hay mqtt_host y el Supervisor no ofreció "
+                  "ningún servicio MQTT (¿Mosquitto instalado e iniciado?). "
+                  "No se publicará nada.", flush=True)
+        else:
+            print(f"MQTT: conectando a {mqtt_cfg['host']}:{mqtt_cfg.get('port', 1883)} "
+                  f"(usuario: {mqtt_cfg.get('username') or 'ninguno'})", flush=True)
             mqtt_client = create_mqtt_client(mqtt_cfg)
-            if mqtt_cfg.get("discovery"):
-                _setup_discovery(mqtt_client, mqtt_cfg)
-            mqtt_client.connect(mqtt_cfg["host"], int(mqtt_cfg.get("port", 1883)), 60)
+            _setup_mqtt(mqtt_client, mqtt_cfg)
+            # connect_async: un broker caído al arrancar no tumba el add-on.
+            mqtt_client.connect_async(mqtt_cfg["host"], int(mqtt_cfg.get("port", 1883)), 60)
             mqtt_client.loop_start()
 
         while True:
