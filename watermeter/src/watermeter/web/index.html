@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Watermeter · Calibración</title>
+<style>
+  :root {
+    --bg:#14171c; --panel:#1d222a; --line:#2c333d; --text:#e6e9ee; --muted:#8b95a3;
+    --accent:#4da3ff; --ok:#3ddc84; --warn:#ffb020; --err:#ff5c5c;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex;
+           gap:16px; align-items:baseline; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; }
+  #live { color:var(--muted); font-size:13px; }
+  main { display:grid; grid-template-columns:minmax(0,1fr) 380px; gap:12px; padding:12px; }
+  @media (max-width:1000px) { main { grid-template-columns:1fr; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
+  .panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em;
+              color:var(--muted); margin:0 0 8px; }
+  #stage { overflow:auto; max-height:calc(100vh - 150px); border-radius:6px; background:#000; }
+  canvas#cv { display:block; width:100%; cursor:crosshair; }
+  #hint { padding:8px 10px; margin-bottom:8px; border-radius:6px; background:#0f3a63; }
+  #toolbar { display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap; align-items:center; }
+  button { background:#2a3340; color:var(--text); border:1px solid var(--line);
+           border-radius:6px; padding:6px 10px; cursor:pointer; font:inherit; }
+  button:hover { background:#344052; }
+  button.primary { background:var(--accent); color:#04213d; border-color:var(--accent); font-weight:600; }
+  button.primary:disabled { opacity:.4; cursor:not-allowed; }
+  button.small { padding:2px 6px; font-size:12px; }
+  .item { display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid transparent;
+          border-radius:6px; cursor:pointer; }
+  .item:hover { background:#262d37; }
+  .item.sel { border-color:var(--accent); background:#20364d; }
+  .dot { width:12px; height:12px; border-radius:50%; flex:none; }
+  .item .st { margin-left:auto; color:var(--muted); font-size:12px; }
+  .item .st.ok { color:var(--ok); }
+  #loupeWrap { display:flex; gap:10px; align-items:center; }
+  canvas#loupe { width:160px; height:160px; border:1px solid var(--line); border-radius:6px; background:#000; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td, th { padding:3px 4px; text-align:left; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:500; }
+  .mono { font-family:ui-monospace,Menlo,Consolas,monospace; }
+  #msg { min-height:20px; margin-top:8px; }
+  #msg.ok { color:var(--ok); } #msg.err { color:var(--err); } #msg.warn { color:var(--warn); }
+  input[type=number] { width:80px; background:#11151a; color:var(--text);
+        border:1px solid var(--line); border-radius:6px; padding:5px 6px; font:inherit; }
+  img#strip { width:100%; image-rendering:auto; border:1px solid var(--line); border-radius:4px;
+              background:#000; margin-top:6px; }
+  .row { display:flex; gap:8px; align-items:center; margin:6px 0; flex-wrap:wrap; }
+  .muted { color:var(--muted); }
+  .big { font-size:22px; font-weight:600; }
+  ul.tips { margin:6px 0 0; padding-left:18px; color:var(--muted); font-size:12.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Watermeter · Calibración</h1>
+  <span id="live">…</span>
+</header>
+
+<main>
+  <section class="panel">
+    <div id="hint">Cargando imagen…</div>
+    <div id="toolbar">
+      <button id="btnReload">↻ Recargar imagen</button>
+      <button id="btnZoomOut">−</button>
+      <button id="btnZoomIn">+</button>
+      <button id="btnFit">Ajustar</button>
+      <span class="muted" id="coords"></span>
+    </div>
+    <div id="stage"><canvas id="cv" width="640" height="360"></canvas></div>
+  </section>
+
+  <aside style="display:flex;flex-direction:column;gap:12px;">
+    <div class="panel">
+      <h2>Esferas (de la ×0.1 a la más fina)</h2>
+      <div id="dialList"></div>
+      <h2 style="margin-top:12px;">Rodillos (parte entera)</h2>
+      <div id="odoItem" class="item"></div>
+      <div class="row">
+        <label for="odoDigits">Nº de rodillos</label>
+        <input type="number" id="odoDigits" min="2" max="12" value="5">
+      </div>
+      <ul class="tips">
+        <li>Clic en un elemento y luego en la imagen: centro → borde → el <b>0</b> impreso.</li>
+        <li>Rodillos: centro del <b>primero</b> → centro del <b>último</b> → borde de una caja.</li>
+        <li>Arrastra cualquier punto para ajustarlo. Las 10 marcas (cada 36°, sentido horario) deben caer sobre los números impresos.</li>
+      </ul>
+    </div>
+
+    <div class="panel">
+      <h2>Lupa</h2>
+      <div id="loupeWrap">
+        <canvas id="loupe" width="160" height="160"></canvas>
+        <span class="muted">Zoom ×4 alrededor del cursor.</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Lectura (vista previa)</h2>
+      <div class="big mono" id="total">—</div>
+      <div class="muted" id="modeInfo"></div>
+      <table id="dialTable" style="margin-top:8px;"></table>
+      <div class="row muted" id="ocrInfo"></div>
+      <img id="strip" alt="" style="display:none">
+      <div class="row" style="margin-top:10px;">
+        <label for="intIn">Parte entera actual</label>
+        <input type="number" id="intIn" min="0" step="1" placeholder="p. ej. 17">
+        <button id="btnInt">Fijar</button>
+        <span class="muted" id="intInfo"></span>
+      </div>
+      <div class="muted" style="font-size:12.5px;">
+        Léela en los rodillos una sola vez; después se sigue sola por las vueltas de la esfera ×0.1
+        (y se guarda en <span class="mono">state.json</span>).
+      </div>
+    </div>
+
+    <div class="panel">
+      <button class="primary" id="btnSave" disabled>Guardar calibración</button>
+      <button id="btnAnalyse">Probar lectura</button>
+      <div id="msg"></div>
+    </div>
+  </aside>
+</main>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const cv = $('#cv'), ctx = cv.getContext('2d');
+const loupe = $('#loupe'), lctx = loupe.getContext('2d');
+const COLORS = ['#ffd400', '#00e676', '#ff4dff', '#ff9800'];
+const NAMES  = ['x0_1', 'x0_01', 'x0_001', 'x0_0001'];
+const ODO_COLOR = '#00e5ff';
+const DEG = Math.PI / 180;
+
+const img = new Image();
+let W = 640, H = 360, zoom = 1;
+let calLoaded = false;
+let result = null;
+
+const model = {
+  dials: NAMES.map(n => ({ name: n, c: null, r: null, zero: null, ea: 315 * DEG })),
+  odo: { digits: 5, p1: null, p2: null, hw: null },
+};
+let sel = { t: 'd', i: 0 };
+let drag = null;
+let analyseTimer = null;
+
+// ---------- geometría ----------------------------------------------------
+const dirv = deg => [Math.sin(deg * DEG), -Math.cos(deg * DEG)];
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const angleDeg = (c, p) => ((Math.atan2(p[0] - c[0], -(p[1] - c[1])) / DEG) % 360 + 360) % 360;
+const dialDone = d => d.c && d.r != null && d.zero != null;
+const odoDone = o => o.p1 && o.p2 && o.hw != null;
+const odoAxis = o => {
+  const L = dist(o.p1, o.p2);
+  if (L < 1e-6) return null;
+  const u = [(o.p2[0] - o.p1[0]) / L, (o.p2[1] - o.p1[1]) / L];
+  return { L, u, v: [-u[1], u[0]] };
+};
+const kScale = () => cv.width / cv.getBoundingClientRect().width;
+
+// ---------- handles --------------------------------------------------------
+function handles() {
+  const hs = [];
+  model.dials.forEach((d, i) => {
+    if (d.c) hs.push({ t: 'd', i, h: 'c', p: d.c });
+    if (d.c && d.r != null) {
+      const e = dirv(d.ea / DEG);
+      hs.push({ t: 'd', i, h: 'r', p: [d.c[0] + e[0] * d.r, d.c[1] + e[1] * d.r] });
+    }
+    if (dialDone(d)) {
+      const z = dirv(d.zero);
+      hs.push({ t: 'd', i, h: 'z', p: [d.c[0] + z[0] * d.r * 0.7, d.c[1] + z[1] * d.r * 0.7] });
+    }
+  });
+  const o = model.odo;
+  if (o.p1) hs.push({ t: 'o', h: 'p1', p: o.p1 });
+  if (o.p2) hs.push({ t: 'o', h: 'p2', p: o.p2 });
+  if (odoDone(o)) {
+    const a = odoAxis(o);
+    if (a) {
+      const m = [(o.p1[0] + o.p2[0]) / 2, (o.p1[1] + o.p2[1]) / 2];
+      hs.push({ t: 'o', h: 'hw', p: [m[0] + a.v[0] * o.hw, m[1] + a.v[1] * o.hw] });
+    }
+  }
+  return hs;
+}
+function hit(pt) {
+  const tol = 11 * kScale();
+  let best = null, bd = tol;
+  for (const h of handles()) {
+    const d = dist(pt, h.p);
+    if (d <= bd) { best = h; bd = d; }
+  }
+  return best;
+}
+function applyDrag(h, pt) {
+  if (h.t === 'd') {
+    const d = model.dials[h.i];
+    if (h.h === 'c') d.c = pt;
+    else if (h.h === 'r') { d.r = Math.max(4, dist(pt, d.c)); d.ea = angleDeg(d.c, pt) * DEG; }
+    else if (h.h === 'z') d.zero = angleDeg(d.c, pt);
+  } else {
+    const o = model.odo;
+    if (h.h === 'p1') o.p1 = pt;
+    else if (h.h === 'p2') o.p2 = pt;
+    else if (h.h === 'hw') {
+      const a = odoAxis(o);
+      if (a) {
+        const m = [(o.p1[0] + o.p2[0]) / 2, (o.p1[1] + o.p2[1]) / 2];
+        o.hw = Math.max(3, Math.abs((pt[0] - m[0]) * a.v[0] + (pt[1] - m[1]) * a.v[1]));
+      }
+    }
+  }
+}
+
+// ---------- colocar puntos con clic -------------------------------------
+function place(pt) {
+  if (sel.t === 'd') {
+    const d = model.dials[sel.i];
+    if (!d.c) d.c = pt;
+    else if (d.r == null) { d.r = Math.max(4, dist(pt, d.c)); d.ea = angleDeg(d.c, pt) * DEG; }
+    else if (d.zero == null) {
+      d.zero = angleDeg(d.c, pt);
+      const next = model.dials.findIndex(x => !dialDone(x));
+      if (next >= 0) sel = { t: 'd', i: next };
+      else if (!odoDone(model.odo)) sel = { t: 'o' };
+    }
+  } else {
+    const o = model.odo;
+    if (!o.p1) o.p1 = pt;
+    else if (!o.p2) o.p2 = pt;
+    else if (o.hw == null) {
+      const a = odoAxis(o);
+      if (a) o.hw = Math.max(3, Math.abs((pt[0] - o.p1[0]) * a.v[0] + (pt[1] - o.p1[1]) * a.v[1]));
+    }
+  }
+}
+function hintText() {
+  if (sel.t === 'd') {
+    const d = model.dials[sel.i], n = d.name;
+    if (!d.c) return `Esfera ${n}: haz clic en el CENTRO de la esfera.`;
+    if (d.r == null) return `Esfera ${n}: haz clic en el BORDE de la esfera (define el radio).`;
+    if (d.zero == null) return `Esfera ${n}: haz clic en el 0 impreso.`;
+    return `Esfera ${n} lista. Arrastra los puntos para ajustar, o elige otro elemento.`;
+  }
+  const o = model.odo;
+  if (!o.p1) return 'Rodillos: haz clic en el centro del PRIMER rodillo (el más significativo).';
+  if (!o.p2) return 'Rodillos: haz clic en el centro del ÚLTIMO rodillo (unidades).';
+  if (o.hw == null) return 'Rodillos: haz clic en el borde de la caja de un rodillo (define el alto).';
+  return 'Rodillos listos. Arrastra los puntos para ajustar.';
+}
+
+// ---------- calibración <-> modelo -------------------------------------------
+function buildCal() {
+  const m = Math.min(W, H);
+  const cal = { dials: [] };
+  for (const d of model.dials) {
+    if (!dialDone(d)) continue;
+    cal.dials.push({ name: d.name, x: d.c[0] / W, y: d.c[1] / H, r: d.r / m, zero_angle: d.zero });
+  }
+  const o = model.odo;
+  if (odoDone(o)) {
+    cal.odometer = { digits: o.digits, x1: o.p1[0] / W, y1: o.p1[1] / H,
+                     x2: o.p2[0] / W, y2: o.p2[1] / H, hw: o.hw / m };
+  }
+  return cal;
+}
+function loadCal(cal) {
+  const m = Math.min(W, H);
+  (cal.dials || []).forEach((d, i) => {
+    if (i >= model.dials.length) return;
+    const t = model.dials[i];
+    t.name = d.name || t.name;
+    t.c = [d.x * W, d.y * H]; t.r = d.r * m; t.zero = d.zero_angle;
+  });
+  if (cal.odometer) {
+    const o = cal.odometer;
+    model.odo = { digits: o.digits, p1: [o.x1 * W, o.y1 * H], p2: [o.x2 * W, o.y2 * H], hw: o.hw * m };
+    $('#odoDigits').value = o.digits;
+  }
+  const next = model.dials.findIndex(x => !dialDone(x));
+  sel = next >= 0 ? { t: 'd', i: next } : { t: 'd', i: 0 };
+}
+
+// ---------- dibujo ---------------------------------------------------------
+function draw() {
+  const k = kScale();
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  if (img.complete && img.naturalWidth) ctx.drawImage(img, 0, 0, W, H);
+
+  model.dials.forEach((d, i) => {
+    if (!d.c) return;
+    const col = COLORS[i % COLORS.length];
+    ctx.lineWidth = 2 * k; ctx.strokeStyle = col; ctx.fillStyle = col;
+    ctx.font = `${13 * k}px system-ui`;
+    if (d.r != null) {
+      ctx.beginPath(); ctx.arc(d.c[0], d.c[1], d.r, 0, 2 * Math.PI); ctx.stroke();
+    }
+    if (dialDone(d)) {
+      for (let n = 0; n < 10; n++) {
+        const a = dirv(d.zero + 36 * n);
+        ctx.lineWidth = (n === 0 ? 3 : 1.5) * k;
+        ctx.beginPath();
+        ctx.moveTo(d.c[0] + a[0] * d.r * 0.72, d.c[1] + a[1] * d.r * 0.72);
+        ctx.lineTo(d.c[0] + a[0] * d.r * 0.98, d.c[1] + a[1] * d.r * 0.98);
+        ctx.stroke();
+        ctx.fillText(String(n), d.c[0] + a[0] * d.r * 1.16 - 4 * k, d.c[1] + a[1] * d.r * 1.16 + 5 * k);
+      }
+    }
+  });
+
+  const o = model.odo;
+  if (odoDone(o)) {
+    const a = odoAxis(o);
+    if (a && o.digits >= 2) {
+      const pitch = a.L / (o.digits - 1);
+      const origin = [o.p1[0] - a.u[0] * pitch / 2, o.p1[1] - a.u[1] * pitch / 2];
+      ctx.strokeStyle = ODO_COLOR; ctx.fillStyle = ODO_COLOR; ctx.lineWidth = 2 * k;
+      ctx.font = `${13 * k}px system-ui`;
+      for (let n = 0; n < o.digits; n++) {
+        const s = [origin[0] + a.u[0] * pitch * n, origin[1] + a.u[1] * pitch * n];
+        const q = [
+          [s[0] - a.v[0] * o.hw, s[1] - a.v[1] * o.hw],
+          [s[0] + a.u[0] * pitch - a.v[0] * o.hw, s[1] + a.u[1] * pitch - a.v[1] * o.hw],
+          [s[0] + a.u[0] * pitch + a.v[0] * o.hw, s[1] + a.u[1] * pitch + a.v[1] * o.hw],
+          [s[0] + a.v[0] * o.hw, s[1] + a.v[1] * o.hw],
+        ];
+        ctx.beginPath(); ctx.moveTo(q[0][0], q[0][1]);
+        for (let j = 1; j < 4; j++) ctx.lineTo(q[j][0], q[j][1]);
+        ctx.closePath(); ctx.stroke();
+        ctx.fillText(String(n + 1), q[0][0] + 3 * k, q[0][1] + 14 * k);
+      }
+    }
+  }
+
+  // agujas detectadas (vista previa)
+  if (result && result.dials) {
+    result.dials.forEach((r, i) => {
+      if (!r.base || !r.tip) return;
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5 * k;
+      ctx.beginPath(); ctx.moveTo(r.base[0], r.base[1]); ctx.lineTo(r.tip[0], r.tip[1]); ctx.stroke();
+      ctx.fillStyle = '#ff3b3b';
+      ctx.beginPath(); ctx.arc(r.tip[0], r.tip[1], 4 * k, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = `bold ${16 * k}px system-ui`;
+      ctx.fillText(r.digit >= 0 ? r.digit : '?', r.base[0] - 5 * k, r.base[1] - 10 * k);
+    });
+  }
+
+  // manejadores
+  for (const h of handles()) {
+    const isSel = (h.t === 'd' && sel.t === 'd' && sel.i === h.i) || (h.t === 'o' && sel.t === 'o');
+    ctx.beginPath(); ctx.arc(h.p[0], h.p[1], (isSel ? 6 : 4.5) * k, 0, 2 * Math.PI);
+    ctx.fillStyle = h.h === 'z' ? '#ff3b3b' : (h.h === 'r' || h.h === 'hw' ? '#fff' : '#111');
+    ctx.fill(); ctx.lineWidth = 2 * k; ctx.strokeStyle = '#fff'; ctx.stroke();
+  }
+  refreshUi();
+}
+
+function refreshUi() {
+  $('#hint').textContent = hintText();
+  const list = $('#dialList'); list.innerHTML = '';
+  model.dials.forEach((d, i) => {
+    const el = document.createElement('div');
+    el.className = 'item' + (sel.t === 'd' && sel.i === i ? ' sel' : '');
+    const ok = dialDone(d);
+    el.innerHTML = `<span class="dot" style="background:${COLORS[i]}"></span><b>${d.name}</b>` +
+      `<span class="st ${ok ? 'ok' : ''}">${ok ? '✓ listo' : 'pendiente'}</span>` +
+      `<button class="small" title="Borrar y repetir">↺</button>`;
+    el.onclick = () => { sel = { t: 'd', i }; draw(); };
+    el.querySelector('button').onclick = ev => {
+      ev.stopPropagation();
+      Object.assign(d, { c: null, r: null, zero: null }); sel = { t: 'd', i }; result = null; draw();
+    };
+    list.appendChild(el);
+  });
+  const oi = $('#odoItem'), o = model.odo;
+  oi.className = 'item' + (sel.t === 'o' ? ' sel' : '');
+  oi.innerHTML = `<span class="dot" style="background:${ODO_COLOR}"></span><b>Rodillos</b>` +
+    `<span class="st ${odoDone(o) ? 'ok' : ''}">${odoDone(o) ? '✓ listo' : 'pendiente'}</span>` +
+    `<button class="small" title="Borrar y repetir">↺</button>`;
+  oi.onclick = () => { sel = { t: 'o' }; draw(); };
+  oi.querySelector('button').onclick = ev => {
+    ev.stopPropagation();
+    Object.assign(model.odo, { p1: null, p2: null, hw: null }); sel = { t: 'o' }; result = null; draw();
+  };
+  const allDials = model.dials.every(dialDone);
+  const odoPartial = (o.p1 || o.p2 || o.hw != null) && !odoDone(o);
+  $('#btnSave').disabled = !allDials || odoPartial;
+}
+
+// ---------- mensajes / API ------------------------------------------------
+function msg(text, cls) { const m = $('#msg'); m.textContent = text; m.className = cls || ''; }
+async function api(path, body) {
+  const opt = body === undefined ? {} :
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+  const r = await fetch(path, opt);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  return data;
+}
+
+function scheduleAnalyse() {
+  clearTimeout(analyseTimer);
+  analyseTimer = setTimeout(analyse, 450);
+}
+async function analyse() {
+  const cal = buildCal();
+  if (!cal.dials.length) return;
+  try {
+    result = await api('api/analyse', { calibration: cal });
+    showResult(result); draw();
+  } catch (e) { msg('Vista previa: ' + e.message, 'err'); }
+}
+function fmt(x, d = 2) { return x == null ? '—' : Number(x).toFixed(d); }
+function showResult(r) {
+  $('#total').textContent = r.reading != null ? r.reading.toFixed(4) + ' m³'
+    : `${r.integer != null ? r.integer : '?'} , ${r.decimal}`;
+  $('#modeInfo').textContent =
+    `Modo ${r.mode === 'day' ? 'día' : 'noche'} (rojo ${(r.day_ratio * 100).toFixed(1)} %)` +
+    (r.reading == null ? ' · lectura total sin calcular: falta la parte entera o alguna aguja' : '');
+  const rows = r.dials.map(d =>
+    `<tr><td>${d.name}</td><td class="mono">${d.digit >= 0 ? d.digit : '?'}</td>` +
+    `<td class="mono">${fmt(d.position)}</td><td class="mono">${fmt(d.angle, 1)}°</td>` +
+    `<td class="mono">${fmt(d.score)}</td></tr>`).join('');
+  $('#dialTable').innerHTML = '<tr><th>Esfera</th><th>Dígito</th><th>Pos.</th><th>Ángulo</th><th>Conf.</th></tr>' + rows;
+  const odo = r.odometer;
+  $('#ocrInfo').textContent = odo
+    ? (odo.ocr ? `OCR rodillos: ${odo.text}  (? = no legible / no fiable)` : 'OCR no disponible (instala tesseract)')
+    : '';
+  const s = $('#strip');
+  if (r.strip_png) { s.src = r.strip_png; s.style.display = 'block'; } else { s.style.display = 'none'; }
+  $('#intInfo').textContent = r.integer != null
+    ? `Actual: ${r.integer} (${r.integer_source})` : 'Sin sembrar';
+  if (r.ocr_mismatch) msg('El OCR de los rodillos no coincide con el entero seguido.', 'warn');
+}
+
+// ---------- eventos -----------------------------------------------------------
+function evPt(ev) {
+  const rc = cv.getBoundingClientRect();
+  return [(ev.clientX - rc.left) * cv.width / rc.width, (ev.clientY - rc.top) * cv.height / rc.height];
+}
+cv.addEventListener('mousedown', ev => {
+  const pt = evPt(ev);
+  const h = hit(pt);
+  if (h) { drag = h; sel = h.t === 'd' ? { t: 'd', i: h.i } : { t: 'o' }; draw(); return; }
+  place(pt); draw(); scheduleAnalyse();
+});
+window.addEventListener('mousemove', ev => {
+  const pt = evPt(ev);
+  if (drag) { applyDrag(drag, pt); draw(); }
+  const rc = cv.getBoundingClientRect();
+  if (ev.clientX >= rc.left && ev.clientX <= rc.right && ev.clientY >= rc.top && ev.clientY <= rc.bottom) {
+    $('#coords').textContent = `x=${pt[0].toFixed(0)} y=${pt[1].toFixed(0)}`;
+    lctx.fillStyle = '#000'; lctx.fillRect(0, 0, 160, 160);
+    if (img.naturalWidth) lctx.drawImage(img, pt[0] - 20, pt[1] - 20, 40, 40, 0, 0, 160, 160);
+    lctx.strokeStyle = '#ff3b3b'; lctx.lineWidth = 1;
+    lctx.beginPath(); lctx.moveTo(80, 0); lctx.lineTo(80, 160); lctx.moveTo(0, 80); lctx.lineTo(160, 80); lctx.stroke();
+  }
+});
+window.addEventListener('mouseup', () => { if (drag) { drag = null; scheduleAnalyse(); } });
+
+$('#odoDigits').addEventListener('change', ev => {
+  model.odo.digits = Math.max(2, Math.min(12, parseInt(ev.target.value || '5', 10)));
+  ev.target.value = model.odo.digits; draw(); scheduleAnalyse();
+});
+$('#btnAnalyse').onclick = () => { msg(''); analyse(); };
+$('#btnSave').onclick = async () => {
+  try {
+    await api('api/calibration', buildCal());
+    msg('Calibración guardada y aplicada en caliente.', 'ok');
+  } catch (e) { msg('No se pudo guardar: ' + e.message, 'err'); }
+};
+$('#btnInt').onclick = async () => {
+  const v = parseInt($('#intIn').value, 10);
+  if (!Number.isInteger(v) || v < 0) { msg('Introduce un entero ≥ 0.', 'err'); return; }
+  try { await api('api/integer', { integer: v }); msg(`Parte entera fijada a ${v}.`, 'ok'); analyse(); }
+  catch (e) { msg(e.message, 'err'); }
+};
+function setZoom(z) { zoom = Math.max(0.5, Math.min(4, z)); cv.style.width = (zoom * 100) + '%'; draw(); }
+$('#btnZoomIn').onclick = () => setZoom(zoom * 1.25);
+$('#btnZoomOut').onclick = () => setZoom(zoom / 1.25);
+$('#btnFit').onclick = () => setZoom(1);
+$('#btnReload').onclick = loadImage;
+window.addEventListener('resize', draw);
+
+function loadImage() {
+  img.onload = async () => {
+    W = cv.width = img.naturalWidth; H = cv.height = img.naturalHeight;
+    if (!calLoaded) {
+      calLoaded = true;
+      try { loadCal(await api('api/calibration')); } catch (e) { msg(e.message, 'err'); }
+    }
+    draw(); scheduleAnalyse();
+  };
+  img.onerror = () => { $('#hint').textContent = 'No hay imagen todavía (¿la cámara ha conectado?). Reintenta en unos segundos.'; };
+  img.src = 'api/frame.jpg?t=' + Date.now();
+}
+
+async function poll() {
+  try {
+    const s = await api('api/status');
+    const r = s.reading;
+    $('#live').textContent = r
+      ? `Último ciclo: ${r.reading != null ? r.reading.toFixed(4) + ' m³' : 'dec ' + r.decimal} · ${r.mode === 'day' ? 'día' : 'noche'} · hace ${Math.max(0, Math.round(Date.now() / 1000 - r.timestamp))} s`
+      : 'Aún sin lecturas del bucle principal';
+  } catch (e) { $('#live').textContent = 'Sin conexión con la aplicación'; }
+}
+setInterval(poll, 5000); poll();
+loadImage();
+</script>
+</body>
+</html>

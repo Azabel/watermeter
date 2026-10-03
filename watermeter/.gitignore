@@ -1,0 +1,11 @@
+__pycache__/
+*.egg-info/
+.venv/
+debug/
+.env
+# Credenciales reales: sólo se versiona config.example.json
+config/config.json
+config/config.*.json
+!config/config.example.json
+state.json
+config/state.json

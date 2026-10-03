@@ -1,0 +1,52 @@
+configuration:
+  camera_url:
+    name: URL de la cámara (RTSP)
+    description: Stream RTSP del contador (Frigate/go2rtc). Puede incluir usuario y contraseña.
+  interval:
+    name: Intervalo de lectura (s)
+    description: Segundos entre lecturas.
+  initial_integer:
+    name: Parte entera inicial (m³)
+    description: Sólo se aplica si aún no hay parte entera guardada. También se puede fijar desde la web.
+  mqtt_host:
+    name: Host MQTT (opcional)
+    description: Déjalo vacío para usar el broker de Home Assistant (Mosquitto) automáticamente.
+  mqtt_port:
+    name: Puerto MQTT
+    description: Sólo se usa si indicas un host MQTT.
+  mqtt_username:
+    name: Usuario MQTT
+    description: Sólo se usa si indicas un host MQTT.
+  mqtt_password:
+    name: Contraseña MQTT
+    description: Sólo se usa si indicas un host MQTT.
+  mqtt_topic:
+    name: Topic de estado
+    description: Topic donde se publica el JSON de la lectura (retain).
+  mqtt_discovery:
+    name: MQTT Discovery
+    description: Crea automáticamente el dispositivo y los sensores en Home Assistant.
+  mqtt_discovery_prefix:
+    name: Prefijo de Discovery
+    description: Debe coincidir con el de la integración MQTT (por defecto homeassistant).
+  day_night_mode:
+    name: Modo día/noche
+    description: auto detecta el cambio a infrarrojos; day o night lo fuerzan.
+  day_ratio:
+    name: Umbral de día
+    description: Fracción de rojo a partir de la cual se considera de día.
+  night_ratio:
+    name: Umbral de noche
+    description: Fracción de rojo por debajo de la cual se considera de noche.
+  ocr:
+    name: OCR de rodillos
+    description: Verifica periódicamente la parte entera leyendo los rodillos con Tesseract.
+  ocr_interval:
+    name: Intervalo del OCR (s)
+    description: Segundos entre verificaciones con OCR.
+  ocr_trust_below:
+    name: Fracción máxima para OCR
+    description: El OCR sólo se ejecuta si la fracción del contador es menor que este valor.
+  auto_seed:
+    name: Sembrar entero por OCR
+    description: Permite fijar la parte entera por OCR (no recomendado con imagen borrosa).

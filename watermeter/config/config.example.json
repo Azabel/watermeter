@@ -1,0 +1,32 @@
+{
+  "camera": {
+    "url": "rtsp://FRIGATE_HOST:8554/contador",
+    "interval": 10
+  },
+  "mqtt": {
+    "host": "MQTT_HOST",
+    "port": 1883,
+    "topic": "watermeter/state",
+    "username": "",
+    "password": ""
+  },
+  "calibration_file": "calibration.json",
+  "state_file": "state.json",
+  "debug_dir": "./debug",
+  "http": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "port": 8080
+  },
+  "day_night": {
+    "mode": "auto",
+    "day_ratio": 0.05,
+    "night_ratio": 0.02
+  },
+  "odometer": {
+    "ocr": true,
+    "auto_seed": false,
+    "ocr_trust_below": 0.8,
+    "ocr_interval": 600
+  }
+}

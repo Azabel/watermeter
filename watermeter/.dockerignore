@@ -1,0 +1,11 @@
+.venv
+.git
+__pycache__
+*.egg-info
+debug
+tests
+.env
+config/config.json
+config/config.*.json
+config/state.json
+state.json

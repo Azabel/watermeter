@@ -1,0 +1,52 @@
+name: Contador de agua (OpenCV)
+version: "0.5.0"
+slug: watermeter
+description: Lee un contador de agua analógico con OpenCV desde una cámara RTSP y lo publica por MQTT
+arch:
+  - amd64
+  - aarch64
+startup: application
+boot: auto
+init: false
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:water
+panel_title: Contador de agua
+services:
+  - mqtt:want
+options:
+  camera_url: rtsp://usuario:clave@192.168.1.10:8554/contador
+  interval: 10
+  initial_integer: null
+  mqtt_host: ""
+  mqtt_port: 1883
+  mqtt_username: ""
+  mqtt_password: ""
+  mqtt_topic: watermeter/state
+  mqtt_discovery: true
+  mqtt_discovery_prefix: homeassistant
+  day_night_mode: auto
+  day_ratio: 0.05
+  night_ratio: 0.02
+  ocr: true
+  ocr_interval: 600
+  ocr_trust_below: 0.8
+  auto_seed: false
+schema:
+  camera_url: str
+  interval: int(1,3600)
+  initial_integer: int(0,99999999)?
+  mqtt_host: str?
+  mqtt_port: port?
+  mqtt_username: str?
+  mqtt_password: password?
+  mqtt_topic: str
+  mqtt_discovery: bool
+  mqtt_discovery_prefix: str
+  day_night_mode: list(auto|day|night)
+  day_ratio: float(0,1)
+  night_ratio: float(0,1)
+  ocr: bool
+  ocr_interval: int(10,86400)
+  ocr_trust_below: float(0,1)
+  auto_seed: bool

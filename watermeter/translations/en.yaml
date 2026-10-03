@@ -1,0 +1,52 @@
+configuration:
+  camera_url:
+    name: Camera URL (RTSP)
+    description: RTSP stream of the meter (Frigate/go2rtc). May include user and password.
+  interval:
+    name: Reading interval (s)
+    description: Seconds between readings.
+  initial_integer:
+    name: Initial integer part (m³)
+    description: Only applied when no integer part is stored yet. It can also be set from the web UI.
+  mqtt_host:
+    name: MQTT host (optional)
+    description: Leave empty to use the Home Assistant broker (Mosquitto) automatically.
+  mqtt_port:
+    name: MQTT port
+    description: Only used when an MQTT host is set.
+  mqtt_username:
+    name: MQTT username
+    description: Only used when an MQTT host is set.
+  mqtt_password:
+    name: MQTT password
+    description: Only used when an MQTT host is set.
+  mqtt_topic:
+    name: State topic
+    description: Topic where the JSON reading is published (retained).
+  mqtt_discovery:
+    name: MQTT Discovery
+    description: Automatically creates the device and sensors in Home Assistant.
+  mqtt_discovery_prefix:
+    name: Discovery prefix
+    description: Must match the MQTT integration prefix (default homeassistant).
+  day_night_mode:
+    name: Day/night mode
+    description: auto detects the switch to infrared; day or night force it.
+  day_ratio:
+    name: Day threshold
+    description: Red fraction at or above which it is considered day.
+  night_ratio:
+    name: Night threshold
+    description: Red fraction below which it is considered night.
+  ocr:
+    name: Odometer OCR
+    description: Periodically verifies the integer part by reading the rollers with Tesseract.
+  ocr_interval:
+    name: OCR interval (s)
+    description: Seconds between OCR verifications.
+  ocr_trust_below:
+    name: Max fraction for OCR
+    description: OCR only runs when the meter fraction is below this value.
+  auto_seed:
+    name: Seed integer by OCR
+    description: Allows setting the integer part by OCR (not recommended with a blurry image).
