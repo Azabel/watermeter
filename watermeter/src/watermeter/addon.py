@@ -8,6 +8,8 @@ import json
 import os
 import urllib.request
 
+from .log import log
+
 OPTIONS_FILE = "/data/options.json"
 DATA_DIR = "/data"
 SUPERVISOR_MQTT_URL = "http://supervisor/services/mqtt"
@@ -29,7 +31,7 @@ def supervisor_mqtt(token=None, url=SUPERVISOR_MQTT_URL, timeout=10):
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.load(resp).get("data") or {}
     except Exception as exc:  # noqa: BLE001
-        print(f"AVISO: no se pudo obtener el servicio MQTT del Supervisor: {exc}", flush=True)
+        log(f"AVISO: no se pudo obtener el servicio MQTT del Supervisor: {exc}")
         return {}
     return {
         "host": data.get("host"),
@@ -64,7 +66,7 @@ def build_config(opts, mqtt_service=None):
     cfg = {
         "camera": {
             "url": opts["camera_url"],
-            "interval": opts.get("interval", 10),
+            "interval": opts.get("interval", 60),
         },
         "mqtt": mqtt_cfg,
         "calibration_file": f"{DATA_DIR}/calibration.json",

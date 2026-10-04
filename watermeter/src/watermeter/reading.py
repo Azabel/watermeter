@@ -19,6 +19,8 @@ import math
 import os
 import time
 
+from .log import log
+
 
 def combine_dials(results):
     """
@@ -83,7 +85,7 @@ class IntegerTracker:
                 pf = data.get("prev_frac")
                 self.prev_frac = None if pf is None else float(pf)
         except (OSError, ValueError, TypeError) as exc:
-            print(f"AVISO: no se pudo leer {self.state_path}: {exc}", flush=True)
+            log(f"AVISO: no se pudo leer {self.state_path}: {exc}")
 
     def save(self):
         if not self.state_path:
@@ -102,7 +104,7 @@ class IntegerTracker:
             os.replace(tmp, self.state_path)
             self._last_save = time.time()
         except OSError as exc:
-            print(f"AVISO: no se pudo guardar {self.state_path}: {exc}", flush=True)
+            log(f"AVISO: no se pudo guardar {self.state_path}: {exc}")
 
     # -- API --------------------------------------------------------------
     def set_integer(self, value, frac=None):

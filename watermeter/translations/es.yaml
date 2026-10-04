@@ -4,7 +4,7 @@ configuration:
     description: Stream RTSP del contador (Frigate/go2rtc). Puede incluir usuario y contraseña.
   interval:
     name: Intervalo de lectura (s)
-    description: Segundos entre lecturas.
+    description: Segundos entre lecturas (por defecto 60). En cada una se conecta a la cámara, lee y desconecta.
   initial_integer:
     name: Parte entera inicial (m³)
     description: Sólo se aplica si aún no hay parte entera guardada. También se puede fijar desde la web.

@@ -4,7 +4,7 @@ configuration:
     description: RTSP stream of the meter (Frigate/go2rtc). May include user and password.
   interval:
     name: Reading interval (s)
-    description: Seconds between readings.
+    description: Seconds between readings (default 60). Each one connects to the camera, reads and disconnects.
   initial_integer:
     name: Initial integer part (m³)
     description: Only applied when no integer part is stored yet. It can also be set from the web UI.

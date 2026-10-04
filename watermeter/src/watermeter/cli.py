@@ -3,7 +3,7 @@
 import argparse
 import time
 
-from .camera import get_frame_from_camera, get_frame_from_image, open_camera
+from .camera import capture_frame, get_frame_from_image
 from .config import (
     DEFAULT_CONFIG_FILE,
     DEFAULT_DEBUG_DIR,
@@ -21,8 +21,11 @@ from .publisher import (
     discovery_messages,
     payload_to_json,
 )
+from .log import log
 from .reader import Reader
 from .server import WebServer
+
+DEFAULT_INTERVAL = 60
 
 
 def _print_once(reader, frame, debug_dir):
@@ -36,7 +39,7 @@ def _start_web(reader, cfg):
     if not http.get("enabled", True):
         return None
     server = WebServer(reader, http["host"], http["port"]).start()
-    print(f"Interfaz web: http://{http['host']}:{server.port}/", flush=True)
+    log(f"Interfaz web: http://{http['host']}:{server.port}/")
     return server
 
 
@@ -52,63 +55,71 @@ def _setup_mqtt(client, mqtt_cfg):
 
     def on_connect(cl, userdata, flags, rc, *props):  # paho 1.x: rc int; 2.x: ReasonCode
         if getattr(rc, "is_failure", rc != 0):
-            print(f"MQTT: conexión rechazada por el broker: {rc} "
-                  "(revisa usuario/contraseña)", flush=True)
+            log(f"MQTT: conexión rechazada por el broker: {rc} "
+                "(revisa usuario/contraseña)")
             return
-        print(f"MQTT: conectado a {mqtt_cfg['host']}:{mqtt_cfg.get('port', 1883)}, "
-              f"topic {mqtt_cfg.get('topic', 'watermeter/state')}", flush=True)
+        log(f"MQTT: conectado a {mqtt_cfg['host']}:{mqtt_cfg.get('port', 1883)}, "
+            f"topic {mqtt_cfg.get('topic', 'watermeter/state')}")
         if discovery:
             for topic, payload in discovery_messages(mqtt_cfg):
                 cl.publish(topic, payload, retain=True)
             cl.publish(avail, "online", retain=True)
-            print("MQTT: Discovery publicado", flush=True)
+            log("MQTT: Discovery publicado")
 
     def on_disconnect(cl, userdata, *args):
-        print("MQTT: desconectado (se reintenta automáticamente)", flush=True)
+        log("MQTT: desconectado (se reintenta automáticamente)")
 
     def on_connect_fail(cl, userdata):
-        print(f"MQTT: no se pudo conectar a {mqtt_cfg['host']}:"
-              f"{mqtt_cfg.get('port', 1883)} (se reintenta)", flush=True)
+        log(f"MQTT: no se pudo conectar a {mqtt_cfg['host']}:"
+            f"{mqtt_cfg.get('port', 1883)} (se reintenta)")
 
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
     client.on_connect_fail = on_connect_fail
 
 
+def _summary(reading):
+    total = reading["reading"]
+    value = "desconocida" if total is None else f"{total:.4f} m3"
+    warn = " [OCR no coincide]" if reading["ocr_mismatch"] else ""
+    return (f"Lectura: {value} (decimal {reading['decimal']}, "
+            f"entero {reading['integer_source'] or 'sin sembrar'}, "
+            f"modo {reading['mode']}){warn}")
+
+
 def run_continuous(reader, cfg, debug_dir, use_mqtt=True):
     camera_cfg = cfg["camera"]
-    interval = float(camera_cfg.get("interval", 10))
+    interval = float(camera_cfg.get("interval", DEFAULT_INTERVAL))
     mqtt_cfg = cfg.get("mqtt", {})
     mqtt_client = None
-    cap = None
     web = _start_web(reader, cfg)
 
     try:
+        log(f"Lectura cada {interval:g} s (conecta a la cámara, lee y desconecta)")
         if not use_mqtt:
-            print("MQTT desactivado (--no-mqtt)", flush=True)
+            log("MQTT desactivado (--no-mqtt)")
         elif not mqtt_cfg.get("host"):
-            print("MQTT: SIN BROKER. No hay mqtt_host y el Supervisor no ofreció "
-                  "ningún servicio MQTT (¿Mosquitto instalado e iniciado?). "
-                  "No se publicará nada.", flush=True)
+            log("MQTT: SIN BROKER. No hay mqtt_host y el Supervisor no ofreció "
+                "ningún servicio MQTT (¿Mosquitto instalado e iniciado?). "
+                "No se publicará nada.")
         else:
-            print(f"MQTT: conectando a {mqtt_cfg['host']}:{mqtt_cfg.get('port', 1883)} "
-                  f"(usuario: {mqtt_cfg.get('username') or 'ninguno'})", flush=True)
+            log(f"MQTT: conectando a {mqtt_cfg['host']}:{mqtt_cfg.get('port', 1883)} "
+                f"(usuario: {mqtt_cfg.get('username') or 'ninguno'})")
             mqtt_client = create_mqtt_client(mqtt_cfg)
             _setup_mqtt(mqtt_client, mqtt_cfg)
             # connect_async: un broker caído al arrancar no tumba el add-on.
             mqtt_client.connect_async(mqtt_cfg["host"], int(mqtt_cfg.get("port", 1883)), 60)
             mqtt_client.loop_start()
 
+        next_run = time.monotonic()
         while True:
             try:
-                if cap is None:
-                    cap = open_camera(camera_cfg["url"])
-                frame = get_frame_from_camera(cap)
+                frame = capture_frame(camera_cfg["url"])
                 reader.set_frame(frame)
 
                 reading = reader.process(frame)
                 payload_json = payload_to_json(build_payload(reading))
-                print(payload_json, flush=True)
+                log(_summary(reading))
 
                 if mqtt_client is not None:
                     mqtt_client.publish(
@@ -119,22 +130,14 @@ def run_continuous(reader, cfg, debug_dir, use_mqtt=True):
                 save_debug(frame, reading, reader.calibration, debug_dir)
 
             except Exception as exc:
-                print(f"ERROR: {exc}", flush=True)
-                if cap is not None:
-                    try:
-                        cap.release()
-                    except Exception:
-                        pass
-                    cap = None  # se reintenta en el siguiente ciclo
+                log(f"ERROR: {exc}")  # se reintenta en el siguiente ciclo
 
-            time.sleep(interval)
+            # Ritmo fijo: el tiempo de captura y proceso cuenta dentro del intervalo.
+            next_run += interval
+            time.sleep(max(0.0, next_run - time.monotonic()))
+            next_run = max(next_run, time.monotonic() - interval)
 
     finally:
-        if cap is not None:
-            try:
-                cap.release()
-            except Exception:
-                pass
         if web is not None:
             web.stop()
         if mqtt_client is not None:
@@ -174,7 +177,7 @@ def main(argv=None):
     # para no pisar el seguimiento en cada reinicio.
     if cfg.get("initial_integer") is not None and reader.tracker.integer is None:
         reader.tracker.set_integer(cfg["initial_integer"])
-        print(f"Parte entera inicial: {cfg['initial_integer']}", flush=True)
+        log(f"Parte entera inicial: {cfg['initial_integer']}")
 
     if args.set_integer is not None:
         reader.tracker.set_integer(args.set_integer)
@@ -202,11 +205,7 @@ def main(argv=None):
 
     if args.debug:
         print("Capturando imagen de la cámara...")
-        cap = open_camera(cfg["camera"]["url"])
-        try:
-            frame = get_frame_from_camera(cap)
-        finally:
-            cap.release()
+        frame = capture_frame(cfg["camera"]["url"])
         reader.set_frame(frame)
         _print_once(reader, frame, debug_dir)
         return 0

@@ -5,7 +5,7 @@ FROM ${BUILD_FROM}
 # de Alpine porque las ruedas de opencv/numpy son manylinux.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        python3 python3-venv python3-pip tesseract-ocr tesseract-ocr-eng \
+        python3 python3-venv python3-pip tesseract-ocr tesseract-ocr-eng tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

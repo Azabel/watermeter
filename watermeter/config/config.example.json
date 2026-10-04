@@ -1,7 +1,7 @@
 {
   "camera": {
     "url": "rtsp://FRIGATE_HOST:8554/contador",
-    "interval": 10
+    "interval": 60
   },
   "mqtt": {
     "host": "MQTT_HOST",

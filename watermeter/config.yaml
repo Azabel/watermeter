@@ -1,5 +1,5 @@
 name: Contador de agua (OpenCV)
-version: "0.5.1"
+version: "0.6.0"
 slug: watermeter
 description: Lee un contador de agua analógico con OpenCV desde una cámara RTSP y lo publica por MQTT
 arch:
@@ -16,7 +16,7 @@ services:
   - mqtt:want
 options:
   camera_url: rtsp://usuario:clave@192.168.1.10:8554/contador
-  interval: 10
+  interval: 60
   initial_integer: null
   mqtt_host: ""
   mqtt_port: 1883
