@@ -116,6 +116,9 @@
       <div class="muted" style="font-size:12.5px;">
         Léela en los rodillos una sola vez; después se sigue sola por las vueltas de la esfera ×0.1
         (y se guarda en <span class="mono">state.json</span>).
+        La lectura publicada <b>nunca baja</b> por sí sola: si una lectura errónea la dejó
+        demasiado alta, escribe aquí el valor correcto y pulsa <b>Fijar</b>, que además
+        reinicia la lectura máxima. Es la única forma de bajarla.
       </div>
     </div>
 
@@ -507,7 +510,8 @@ async function poll() {
     const s = await api('api/status');
     const r = s.reading;
     $('#live').textContent = r
-      ? `Último ciclo: ${r.reading != null ? r.reading.toFixed(4) + ' m³' : 'dec ' + r.decimal} · ${r.mode === 'day' ? 'día' : 'noche'} · hace ${Math.max(0, Math.round(Date.now() / 1000 - r.timestamp))} s`
+      ? `Último ciclo: ${r.reading != null ? r.reading.toFixed(4) + ' m³' : 'dec ' + r.decimal} · ${r.mode === 'day' ? 'día' : 'noche'} · hace ${Math.max(0, Math.round(Date.now() / 1000 - r.timestamp))} s` +
+        (r.held ? ' · RETENIDA (no puede bajar; usa Fijar para corregir)' : '')
       : 'Aún sin lecturas del bucle principal';
   } catch (e) { $('#live').textContent = 'Sin conexión con la aplicación'; }
 }

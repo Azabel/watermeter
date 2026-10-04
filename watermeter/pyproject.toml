@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "watermeter"
-version = "0.6.0"
+version = "0.7.0"
 description = "Lector OpenCV de contador de agua con salida MQTT"
 requires-python = ">=3.9"
 dependencies = [

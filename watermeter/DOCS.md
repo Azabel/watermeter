@@ -29,6 +29,16 @@ y publica la lectura por MQTT. Crea solo los sensores en Home Assistant.
 Los cambios en las opciones requieren reiniciar el add-on. La calibración y la
 parte entera se guardan en `/data` y entran en las copias de seguridad de HA.
 
+## La lectura nunca baja
+
+La lectura publicada es siempre ≥ la máxima ya publicada (se guarda en
+`/data/state.json`). Si una lectura es menor, se retiene la máxima y el log lo
+indica (`[retenida…]`). Un salto hacia arriba de más de 0,1 m³ sólo se acepta
+si dos ciclos seguidos coinciden, para que un pico erróneo no quede fijado.
+
+La única forma de bajarla es el botón **Fijar** de la web: escribe el valor
+correcto de la parte entera y pulsa Fijar; eso reinicia la lectura máxima.
+
 ## Limitación
 
 Si el contador avanza 0,5 m³ o más mientras el add-on está parado, la parte

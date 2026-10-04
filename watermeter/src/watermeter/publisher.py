@@ -32,6 +32,7 @@ def build_payload(reading):
         "decimal": reading["decimal"],
         "integer_source": reading["integer_source"],
         "ocr_mismatch": reading["ocr_mismatch"],
+        "held": reading.get("held", False),
         "mode": reading["mode"],
         "dials": reading["dials"],
         "timestamp": reading["timestamp"],

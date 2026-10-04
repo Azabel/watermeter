@@ -82,6 +82,8 @@ def _summary(reading):
     total = reading["reading"]
     value = "desconocida" if total is None else f"{total:.4f} m3"
     warn = " [OCR no coincide]" if reading["ocr_mismatch"] else ""
+    if reading.get("held"):
+        warn += " [retenida: la lectura no puede bajar]"
     return (f"Lectura: {value} (decimal {reading['decimal']}, "
             f"entero {reading['integer_source'] or 'sin sembrar'}, "
             f"modo {reading['mode']}){warn}")

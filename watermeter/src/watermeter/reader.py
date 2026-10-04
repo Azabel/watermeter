@@ -121,17 +121,27 @@ class Reader:
                 mismatch = tracked["ocr_mismatch"]
                 if commit:
                     self._mismatch = mismatch
+            total = compose_reading(tracked["integer"], digits_text, frac)
+            integer_out, decimal_out, held = tracked["integer"], digits_text, False
+            if commit:  # la vista previa muestra la lectura cruda de la calibración
+                total, held = self.tracker.floor_reading(total)
+                if held:
+                    # Coherencia: entero y decimales salen de la lectura retenida.
+                    n = len(digits_text)
+                    integer_out, rem = divmod(round(total * 10 ** n), 10 ** n)
+                    decimal_out = str(rem).zfill(n)
             reading = {
                 "timestamp": int(time.time()),
                 "mode": mode,
                 "day_ratio": round(float(ratio), 4),
                 "dials": results,
-                "decimal": digits_text,
+                "decimal": decimal_out,
                 "fraction": None if frac is None else round(frac, 6),
-                "integer": tracked["integer"],
+                "integer": integer_out,
                 "integer_source": tracked["integer_source"],
                 "ocr_mismatch": mismatch,
-                "reading": compose_reading(tracked["integer"], digits_text, frac),
+                "reading": total,
+                "held": held,
                 "odometer": None
                 if odo_result is None
                 else {

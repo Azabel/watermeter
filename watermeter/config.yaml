@@ -1,5 +1,5 @@
 name: Contador de agua (OpenCV)
-version: "0.6.0"
+version: "0.7.0"
 slug: watermeter
 description: Lee un contador de agua analógico con OpenCV desde una cámara RTSP y lo publica por MQTT
 arch:
