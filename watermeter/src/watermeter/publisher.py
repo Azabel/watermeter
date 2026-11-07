@@ -86,7 +86,7 @@ def discovery_messages(mqtt_cfg):
             "device_class": "water",
             "state_class": "total_increasing",
             "unit_of_measurement": "m³",
-            "suggested_display_precision": 3,
+            "suggested_display_precision": 4,
         }),
         ("sensor", "mode", {
             "name": "Modo de imagen",

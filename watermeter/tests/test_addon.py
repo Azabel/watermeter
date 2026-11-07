@@ -70,5 +70,6 @@ def test_discovery_messages():
     reading = json.loads(msgs["homeassistant/sensor/watermeter/reading/config"])
     assert reading["state_topic"] == "watermeter/state"
     assert reading["availability_topic"] == availability_topic(mqtt_cfg) == "watermeter/availability"
+    assert reading["suggested_display_precision"] == 4   # las 4 esferas decimales
     assert reading["state_class"] == "total_increasing"
     assert reading["device_class"] == "water"
