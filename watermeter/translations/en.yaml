@@ -2,9 +2,12 @@ configuration:
   camera_url:
     name: Camera URL (RTSP)
     description: RTSP stream of the meter (Frigate/go2rtc). May include user and password.
+  capture_delay:
+    name: Delay before reading (s)
+    description: Seconds to wait after pressing "Read now" before capturing (e.g. for the camera to adjust exposure with the light on). 0 = immediate.
   interval:
-    name: Reading interval (s)
-    description: Seconds between readings (default 60). Each one connects to the camera, reads and disconnects.
+    name: Interval (obsolete)
+    description: No longer used; there is no periodic reading. It can be left as is.
   initial_integer:
     name: Initial integer part (m³)
     description: Only applied when no integer part is stored yet. It can also be set from the web UI.

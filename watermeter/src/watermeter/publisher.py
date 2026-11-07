@@ -47,6 +47,14 @@ def availability_topic(mqtt_cfg):
     return mqtt_cfg.get("topic", "watermeter/state").rsplit("/", 1)[0] + "/availability"
 
 
+def command_topic(mqtt_cfg):
+    """Topic al que el botón "Leer ahora" de Home Assistant envía READ."""
+    return mqtt_cfg.get("topic", "watermeter/state").rsplit("/", 1)[0] + "/read"
+
+
+READ_COMMAND = "READ"
+
+
 def discovery_messages(mqtt_cfg):
     """
     Mensajes de MQTT Discovery de Home Assistant: [(topic, payload_json)].
@@ -87,6 +95,16 @@ def discovery_messages(mqtt_cfg):
             "icon": "mdi:theme-light-dark",
             "entity_category": "diagnostic",
         }),
+        # Cambia en cada lectura aunque el valor no varíe: sirve a la
+        # automatización para saber cuándo apagar la luz.
+        ("sensor", "last_read", {
+            "name": "Última lectura",
+            "unique_id": "watermeter_last_read",
+            "value_template": ("{{ value_json.timestamp | int | "
+                               "timestamp_custom('%Y-%m-%dT%H:%M:%S+00:00', false) }}"),
+            "device_class": "timestamp",
+            "entity_category": "diagnostic",
+        }),
         ("binary_sensor", "ocr_mismatch", {
             "name": "Discrepancia OCR",
             "unique_id": "watermeter_ocr_mismatch",
@@ -99,6 +117,18 @@ def discovery_messages(mqtt_cfg):
     for component, key, extra in entities:
         topic = f"{prefix}/{component}/watermeter/{key}/config"
         out.append((topic, json.dumps({**common, **extra}, ensure_ascii=False)))
+    # El botón no tiene estado: sólo envía el comando de lectura.
+    button = {
+        "name": "Leer ahora",
+        "unique_id": "watermeter_read",
+        "command_topic": command_topic(mqtt_cfg),
+        "payload_press": READ_COMMAND,
+        "availability_topic": common["availability_topic"],
+        "icon": "mdi:camera-iris",
+        "device": device,
+    }
+    out.append((f"{prefix}/button/watermeter/read/config",
+                json.dumps(button, ensure_ascii=False)))
     return out
 
 

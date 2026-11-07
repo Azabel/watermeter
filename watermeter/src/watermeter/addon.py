@@ -66,7 +66,7 @@ def build_config(opts, mqtt_service=None):
     cfg = {
         "camera": {
             "url": opts["camera_url"],
-            "interval": opts.get("interval", 60),
+            "capture_delay": opts.get("capture_delay", 0),
         },
         "mqtt": mqtt_cfg,
         "calibration_file": f"{DATA_DIR}/calibration.json",

@@ -2,9 +2,12 @@ configuration:
   camera_url:
     name: URL de la cámara (RTSP)
     description: Stream RTSP del contador (Frigate/go2rtc). Puede incluir usuario y contraseña.
+  capture_delay:
+    name: Espera antes de leer (s)
+    description: Segundos que espera tras pulsar «Leer ahora» antes de capturar (p. ej. a que la cámara ajuste la exposición con la luz encendida). 0 = inmediato.
   interval:
-    name: Intervalo de lectura (s)
-    description: Segundos entre lecturas (por defecto 60). En cada una se conecta a la cámara, lee y desconecta.
+    name: Intervalo (obsoleta)
+    description: Ya no se usa; no hay lectura periódica. Se puede dejar como está.
   initial_integer:
     name: Parte entera inicial (m³)
     description: Sólo se aplica si aún no hay parte entera guardada. También se puede fijar desde la web.

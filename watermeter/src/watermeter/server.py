@@ -12,6 +12,7 @@ aplica en caliente, sin reiniciar.
                            guardar (vista previa); no altera el estado
   GET  /api/status         última lectura publicada
   POST /api/integer        fija la parte entera {"integer": 17}
+  POST /api/capture        lee ahora de la cámara y publica (como el botón de HA)
 
 Sin autenticación: pensado para la red local. Cambia http.host en
 config.json a 127.0.0.1 si no quieres exponerlo.
@@ -31,7 +32,7 @@ WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 MAX_BODY = 1024 * 1024
 
 
-def _make_handler(reader):
+def _make_handler(reader, capture=None):
     class Handler(BaseHTTPRequestHandler):
         server_version = "watermeter"
 
@@ -123,6 +124,15 @@ def _make_handler(reader):
                                 + base64.b64encode(buf.tobytes()).decode("ascii")
                             )
                     self._json(200, reading)
+                elif path == "/api/capture":
+                    if capture is None:
+                        return self._error(501, "Este modo no puede capturar de la cámara")
+                    try:
+                        reading = capture()
+                    except Exception as exc:  # noqa: BLE001
+                        return self._error(502, f"No se pudo leer: {exc}")
+                    self._json(200, {"timestamp": reading["timestamp"],
+                                     "reading": reading["reading"]})
                 elif path == "/api/integer":
                     value = data.get("integer")
                     if isinstance(value, bool) or not isinstance(value, int):
@@ -141,8 +151,8 @@ def _make_handler(reader):
 
 
 class WebServer:
-    def __init__(self, reader, host="0.0.0.0", port=8080):
-        self.httpd = ThreadingHTTPServer((host, int(port)), _make_handler(reader))
+    def __init__(self, reader, host="0.0.0.0", port=8080, capture=None):
+        self.httpd = ThreadingHTTPServer((host, int(port)), _make_handler(reader, capture))
         self.httpd.daemon_threads = True
         self._thread = threading.Thread(
             target=self.httpd.serve_forever, name="watermeter-http", daemon=True

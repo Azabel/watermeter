@@ -1,9 +1,11 @@
 """Línea de comandos: imagen estática, captura única, o modo continuo + web."""
 
 import argparse
+import threading
 import time
 
 from .camera import capture_frame, get_frame_from_image
+from .capturer import Capturer
 from .config import (
     DEFAULT_CONFIG_FILE,
     DEFAULT_DEBUG_DIR,
@@ -15,17 +17,15 @@ from .config import (
 from .debug import print_results, save_debug
 from .addon import load_addon_config
 from .publisher import (
+    READ_COMMAND,
     availability_topic,
-    build_payload,
+    command_topic,
     create_mqtt_client,
     discovery_messages,
-    payload_to_json,
 )
 from .log import log
 from .reader import Reader
 from .server import WebServer
-
-DEFAULT_INTERVAL = 60
 
 
 def _print_once(reader, frame, debug_dir):
@@ -34,20 +34,22 @@ def _print_once(reader, frame, debug_dir):
     print_results(reading, debug_path)
 
 
-def _start_web(reader, cfg):
+def _start_web(reader, cfg, capture=None):
     http = cfg["http"]
     if not http.get("enabled", True):
         return None
-    server = WebServer(reader, http["host"], http["port"]).start()
+    server = WebServer(reader, http["host"], http["port"], capture=capture).start()
     log(f"Interfaz web: http://{http['host']}:{server.port}/")
     return server
 
 
-def _setup_mqtt(client, mqtt_cfg):
+def _setup_mqtt(client, mqtt_cfg, on_read):
     """
-    Registra en el log el estado de la conexión y, si hay Discovery,
-    publica disponibilidad (LWT) y entidades en cada (re)conexión.
+    Registra en el log el estado de la conexión, escucha el comando de lectura
+    (llama a on_read) y, si hay Discovery, publica disponibilidad (LWT) y
+    entidades en cada (re)conexión.
     """
+    cmd_topic = command_topic(mqtt_cfg)
     discovery = bool(mqtt_cfg.get("discovery"))
     avail = availability_topic(mqtt_cfg)
     if discovery:
@@ -59,7 +61,8 @@ def _setup_mqtt(client, mqtt_cfg):
                 "(revisa usuario/contraseña)")
             return
         log(f"MQTT: conectado a {mqtt_cfg['host']}:{mqtt_cfg.get('port', 1883)}, "
-            f"topic {mqtt_cfg.get('topic', 'watermeter/state')}")
+            f"topic {mqtt_cfg.get('topic', 'watermeter/state')}, comando {cmd_topic}")
+        cl.subscribe(cmd_topic)
         if discovery:
             for topic, payload in discovery_messages(mqtt_cfg):
                 cl.publish(topic, payload, retain=True)
@@ -73,31 +76,28 @@ def _setup_mqtt(client, mqtt_cfg):
         log(f"MQTT: no se pudo conectar a {mqtt_cfg['host']}:"
             f"{mqtt_cfg.get('port', 1883)} (se reintenta)")
 
+    def on_message(cl, userdata, msg):
+        if msg.retain:  # un comando retenido sería una lectura fantasma al reconectar
+            return
+        if msg.payload.decode("utf-8", "replace").strip().upper() == READ_COMMAND:
+            on_read()
+
     client.on_connect = on_connect
+    client.on_message = on_message
     client.on_disconnect = on_disconnect
     client.on_connect_fail = on_connect_fail
 
 
-def _summary(reading):
-    total = reading["reading"]
-    value = "desconocida" if total is None else f"{total:.4f} m3"
-    warn = " [OCR no coincide]" if reading["ocr_mismatch"] else ""
-    if reading.get("held"):
-        warn += " [retenida: la lectura no puede bajar]"
-    return (f"Lectura: {value} (decimal {reading['decimal']}, "
-            f"entero {reading['integer_source'] or 'sin sembrar'}, "
-            f"modo {reading['mode']}){warn}")
-
-
 def run_continuous(reader, cfg, debug_dir, use_mqtt=True):
-    camera_cfg = cfg["camera"]
-    interval = float(camera_cfg.get("interval", DEFAULT_INTERVAL))
+    """Espera peticiones de lectura (botón de HA por MQTT o botón de la web)."""
     mqtt_cfg = cfg.get("mqtt", {})
     mqtt_client = None
-    web = _start_web(reader, cfg)
+    capturer = Capturer(reader, cfg, debug_dir)
+    requested = threading.Event()
+    web = _start_web(reader, cfg, capturer.read_now)
 
     try:
-        log(f"Lectura cada {interval:g} s (conecta a la cámara, lee y desconecta)")
+        log("Sin lectura periódica: se lee al pulsar «Leer ahora» (Home Assistant o web)")
         if not use_mqtt:
             log("MQTT desactivado (--no-mqtt)")
         elif not mqtt_cfg.get("host"):
@@ -108,36 +108,22 @@ def run_continuous(reader, cfg, debug_dir, use_mqtt=True):
             log(f"MQTT: conectando a {mqtt_cfg['host']}:{mqtt_cfg.get('port', 1883)} "
                 f"(usuario: {mqtt_cfg.get('username') or 'ninguno'})")
             mqtt_client = create_mqtt_client(mqtt_cfg)
-            _setup_mqtt(mqtt_client, mqtt_cfg)
+            _setup_mqtt(mqtt_client, mqtt_cfg, requested.set)
+            capturer.mqtt_client = mqtt_client
             # connect_async: un broker caído al arrancar no tumba el add-on.
             mqtt_client.connect_async(mqtt_cfg["host"], int(mqtt_cfg.get("port", 1883)), 60)
             mqtt_client.loop_start()
 
-        next_run = time.monotonic()
+        # Las peticiones que llegan durante una lectura se juntan en una sola.
+        # wait(1): con timeout, Ctrl+C responde también en Windows.
         while True:
+            if not requested.wait(1.0):
+                continue
+            requested.clear()
             try:
-                frame = capture_frame(camera_cfg["url"])
-                reader.set_frame(frame)
-
-                reading = reader.process(frame)
-                payload_json = payload_to_json(build_payload(reading))
-                log(_summary(reading))
-
-                if mqtt_client is not None:
-                    mqtt_client.publish(
-                        mqtt_cfg.get("topic", "watermeter/state"),
-                        payload_json,
-                        retain=True,
-                    )
-                save_debug(frame, reading, reader.calibration, debug_dir)
-
+                capturer.read_now()
             except Exception as exc:
-                log(f"ERROR: {exc}")  # se reintenta en el siguiente ciclo
-
-            # Ritmo fijo: el tiempo de captura y proceso cuenta dentro del intervalo.
-            next_run += interval
-            time.sleep(max(0.0, next_run - time.monotonic()))
-            next_run = max(next_run, time.monotonic() - interval)
+                log(f"ERROR: {exc}")
 
     finally:
         if web is not None:

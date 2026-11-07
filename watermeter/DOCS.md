@@ -10,7 +10,10 @@ y publica la lectura por MQTT. Crea solo los sensores en Home Assistant.
 3. Inicia el add-on y ábrelo desde la barra lateral (**Contador de agua**).
 4. Calibra las esferas y los rodillos en la web (ver README) y pulsa **Fijar**
    con la parte entera actual del contador (o rellena `initial_integer`).
-5. Aparecerá el dispositivo **Contador de agua** con `sensor.contador_de_agua_lectura`
+5. **No hay lectura periódica**: el add-on espera a que pulses el botón
+   **Leer ahora**, que aparece en el mismo dispositivo de HA (o en la web del
+   add-on). Cada pulsación conecta a la cámara, lee, publica y desconecta.
+6. Aparecerá el dispositivo **Contador de agua** con `sensor.contador_de_agua_lectura`
    (m³, `total_increasing`), listo para el panel de Energía.
 
 ## Opciones
@@ -18,7 +21,7 @@ y publica la lectura por MQTT. Crea solo los sensores en Home Assistant.
 | Opción | Descripción |
 |---|---|
 | `camera_url` | URL RTSP de la cámara |
-| `interval` | Segundos entre lecturas |
+| `capture_delay` | Segundos de espera tras pulsar «Leer ahora» antes de capturar |
 | `initial_integer` | Parte entera inicial; sólo si aún no hay una guardada |
 | `mqtt_host`, `mqtt_port`, `mqtt_username`, `mqtt_password` | Broker propio. Vacío = usa el broker de HA |
 | `mqtt_topic` | Topic del JSON de estado |
@@ -28,6 +31,37 @@ y publica la lectura por MQTT. Crea solo los sensores en Home Assistant.
 
 Los cambios en las opciones requieren reiniciar el add-on. La calibración y la
 parte entera se guardan en `/data` y entran en las copias de seguridad de HA.
+
+## Automatización con la luz del contador
+
+El add-on no enciende la luz: lo hace tu automatización. Entidades del
+dispositivo: `button.contador_de_agua_leer_ahora` (dispara la lectura) y
+`sensor.contador_de_agua_ultima_lectura` (cambia en cada lectura, aunque el
+valor sea el mismo). Ejemplo:
+
+```yaml
+alias: Leer contador de agua
+triggers:
+  - trigger: time_pattern
+    minutes: "/15"
+actions:
+  - action: switch.turn_on
+    target: { entity_id: switch.luz_contador }
+  - delay: "00:00:05"            # que la cámara se adapte a la luz
+  - action: button.press
+    target: { entity_id: button.contador_de_agua_leer_ahora }
+  - wait_for_trigger:
+      - trigger: state
+        entity_id: sensor.contador_de_agua_ultima_lectura
+    timeout: "00:00:30"
+    continue_on_timeout: true
+  - action: switch.turn_off
+    target: { entity_id: switch.luz_contador }
+```
+
+Los nombres exactos de las entidades pueden variar; compruébalos en el
+dispositivo. Si prefieres no usar el `delay`, la opción `capture_delay` hace la
+espera dentro del add-on.
 
 ## La lectura nunca baja
 

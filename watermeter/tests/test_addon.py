@@ -3,11 +3,12 @@
 import json
 
 from watermeter.addon import build_config
-from watermeter.publisher import availability_topic, discovery_messages
+from watermeter.publisher import availability_topic, command_topic, discovery_messages
 
 OPTS = {
     "camera_url": "rtsp://cam/stream",
-    "interval": 15,
+    "interval": 15,   # obsoleta: se ignora
+    "capture_delay": 3,
     "initial_integer": 22,
     "mqtt_host": "",
     "mqtt_topic": "watermeter/state",
@@ -26,7 +27,7 @@ SERVICE = {"host": "core-mosquitto", "port": 1883, "username": "u", "password": 
 
 def test_options_map_to_config():
     cfg = build_config(OPTS, SERVICE)
-    assert cfg["camera"] == {"url": "rtsp://cam/stream", "interval": 15}
+    assert cfg["camera"] == {"url": "rtsp://cam/stream", "capture_delay": 3}
     assert cfg["day_night"] == {"mode": "night", "day_ratio": 0.1, "night_ratio": 0.03}
     assert cfg["odometer"]["ocr"] is False
     assert cfg["odometer"]["ocr_interval"] == 300
@@ -57,8 +58,15 @@ def test_discovery_messages():
     assert set(msgs) == {
         "homeassistant/sensor/watermeter/reading/config",
         "homeassistant/sensor/watermeter/mode/config",
+        "homeassistant/sensor/watermeter/last_read/config",
         "homeassistant/binary_sensor/watermeter/ocr_mismatch/config",
+        "homeassistant/button/watermeter/read/config",
     }
+    button = json.loads(msgs["homeassistant/button/watermeter/read/config"])
+    reading_dev = json.loads(msgs["homeassistant/sensor/watermeter/reading/config"])["device"]
+    assert button["command_topic"] == command_topic(mqtt_cfg) == "watermeter/read"
+    assert button["payload_press"] == "READ"
+    assert button["device"] == reading_dev        # mismo dispositivo que la lectura
     reading = json.loads(msgs["homeassistant/sensor/watermeter/reading/config"])
     assert reading["state_topic"] == "watermeter/state"
     assert reading["availability_topic"] == availability_topic(mqtt_cfg) == "watermeter/availability"
